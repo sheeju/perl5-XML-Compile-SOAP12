@@ -6,9 +6,11 @@ use base 'XML::Compile::SOAP';
 
 use Log::Report 'xml-compile-soap12', syntax => 'SHORT';
 
-use XML::Compile::Util;
+use XML::Compile::Util          qw/SCHEMA2001/;
 use XML::Compile::SOAP::Util;
+
 use XML::Compile::SOAP12::Util;
+use XML::Compile::SOAP12::Operation;
 
 my %roles =
  ( NEXT     => SOAP12NEXT
@@ -16,13 +18,6 @@ my %roles =
  , ULTIMATE => SOAP12ULTIMATE
  );
 my %rev_roles = reverse %roles;
-
-XML::Compile->addSchemaDirs(__FILE__);
-XML::Compile->knownNamespace
- ( &SOAP12ENC => '2003-soap-encoding.xsd'
- , &SOAP12ENV => '2003-soap-envelope.xsd'
- , &SOAP12RPC => '2003-soap-rpc.xsd'
- );
 
 =chapter NAME
 XML::Compile::SOAP12 - base class for SOAP1.2 implementation
@@ -56,12 +51,29 @@ sub new($@)
 
 sub init($)
 {   my ($self, $args) = @_;
-    $args->{version}     = 'SOAP12';
     $self->SUPER::init($args);
+    $self->_initSOAP12($self->schemas);
+}
 
-    $self->schemas->importDefinitions( [SOAP12ENC, SOAP12ENV, SOAP12RPC] );
+sub _initSOAP12($)
+{   my ($self, $schemas) = @_;
+    return $self
+        if exists $schemas->prefixes->{env};
+
+    $schemas->importDefinitions([SOAP12ENC, SOAP12ENV, SOAP12RPC]);
+    $schemas->addKeyRewrite('PREFIXES(soap12)');
+
+    $schemas->prefixes
+      ( soap12env => SOAP12ENV  # preferred names by spec
+      , soap12enc => SOAP12ENC
+      , xsd       => SCHEMA2001
+      );
+
     $self;
 }
+
+sub version    { 'SOAP12' }
+sub envelopeNS { SOAP12ENV }
 
 =section Accessors
 =cut
