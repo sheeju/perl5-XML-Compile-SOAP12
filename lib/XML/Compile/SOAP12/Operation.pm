@@ -6,7 +6,7 @@ use strict;
 ##### when it contains soap12 info.
 
 package XML::Compile::SOAP12::Operation;
-use base 'XML::Compile::Operation';
+use base 'XML::Compile::SOAP::Operation';
 
 use Log::Report    'xml-compile-soap12', syntax => 'SHORT';
 use List::Util     'first';
@@ -315,6 +315,10 @@ sub compileClient(@)
       );
 }
 
+#-------------------
+
+=section Helpers
+
 =method explain WSDL, FORMAT, DIRECTION, OPTIONS
 Dump an annotated structure showing how the operation works, helping
 developers to understand the schema. FORMAT is always C<PERL>: C<XML>
@@ -324,8 +328,8 @@ The DIRECTION is C<INPUT>, it will return the message which the client
 sends to the server (input for the server). The C<OUTPUT> message is
 sent as response by the server.
 
-All OPTIONS besides those described here are passed to M<template()>,
-when C<recurse> is enabled.
+All OPTIONS besides those described here are passed to
+M<XML::Compile::Schema::template()>, when C<recurse> is enabled.
 
 =option  skip_header BOOLEAN
 =default skip_header <false>
