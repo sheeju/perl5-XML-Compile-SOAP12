@@ -24,6 +24,8 @@ XML::Compile::SOAP12 - base class for SOAP1.2 implementation
 
 =chapter SYNOPSIS
 **WARNING** Implementation not finished: not usable!!
+I am looking for companies who will support the two weeks of
+development time I need to complete this module.
 
 =chapter DESCRIPTION
 This module handles the SOAP protocol version 1.2.
