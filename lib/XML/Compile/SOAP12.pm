@@ -24,7 +24,7 @@ XML::Compile::SOAP12 - base class for SOAP1.2 implementation
 
 =chapter SYNOPSIS
 **WARNING** Implementation not finished: not usable!!
-I am looking for companies who will support the two weeks of
+I am looking for companies who will sponsor the two weeks of
 development time I need to complete this module.
 
 =chapter DESCRIPTION
@@ -62,12 +62,12 @@ sub _initSOAP12($)
     return $self
         if exists $schemas->prefixes->{env};
 
-    $schemas->importDefinitions([SOAP12ENC, SOAP12ENV, SOAP12RPC]);
     $schemas->addKeyRewrite('PREFIXES(soap12)');
 
     $schemas->prefixes
       ( soap12env => SOAP12ENV  # preferred names by spec
       , soap12enc => SOAP12ENC
+      , soap12rpc => SOAP12RPC
       , xsd       => SCHEMA2001
       );
 
