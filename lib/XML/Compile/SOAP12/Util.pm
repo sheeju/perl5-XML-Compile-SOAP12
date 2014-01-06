@@ -52,7 +52,7 @@ C<SOAP12ENV>, C<SOAP12ENC>, C<SOAP12RPC>, C<SOAP12BIND>, C<SOAP12MEP>,
 C<SOAP12FEATURES>.
 =cut
 
-use constant SOAP12 => 'http://www.w3c.org/2003/05/';
+use constant SOAP12 => 'http://www.w3.org/2003/05/';
 
 use constant
  { SOAP12ENV      => SOAP12.'soap-envelope'

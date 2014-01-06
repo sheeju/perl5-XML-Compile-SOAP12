@@ -1,27 +1,20 @@
 use warnings;
 use strict;
 
-##### WARNING: this is just a blunt copy of SOAP11::Operation, so it
-##### does ****NOT IMPLEMENT**** soap12 yet. Used for $wsdl->printIndex
-##### when it contains soap12 info.
-
 package XML::Compile::SOAP12::Operation;
 use base 'XML::Compile::SOAP::Operation';
 
-use Log::Report    'xml-compile-soap12', syntax => 'SHORT';
-use List::Util     'first';
-use File::Basename 'dirname';
+use Log::Report 'xml-compile-soap', syntax => 'SHORT';
+use List::Util  'first';
 
 use XML::Compile::Util         qw/pack_type unpack_type/;
-use XML::Compile::SOAP::Util   qw/:wsdl11/;
 use XML::Compile::SOAP12::Util qw/:soap12/;
 use XML::Compile::SOAP12::Client;
 use XML::Compile::SOAP12::Server;
+use XML::Compile::SOAP::Extension;
 
 our $VERSION;         # OODoc adds $VERSION to the script
-$VERSION ||= 'undef';
-
-__PACKAGE__->register(WSDL11SOAP12, SOAP12ENV);
+$VERSION ||= '(devel)';
 
 # client/server object per schema class, because initiation options
 # can be different.  Class reference is key.
@@ -32,10 +25,9 @@ my (%soap12_client, %soap12_server);
 XML::Compile::SOAP12::Operation - defines a SOAP12 interaction
 
 =chapter SYNOPSIS
- ### Don't use this (yet!!!)  not completed!!!
-
  # object created by XML::Compile::WSDL*
  my $op = $wsdl->operation('GetStockPrices');
+ $op->explain($wsdl, PERL => 'INPUT', recurse => 1);
 
 =chapter DESCRIPTION
 Objects of this type define one possible SOAP12 interaction, either
@@ -63,7 +55,6 @@ in WSDL1.1 style.
 =option  style  'document'|'rpc'
 =default style  'document'
 
-
 =cut
 
 sub init($)
@@ -75,28 +66,11 @@ sub init($)
         for qw/input_def output_def fault_def/;
 
     $self->{style} = $args->{style} || 'document';
+
+    XML::Compile::SOAP::Extension->soap12OperationInit($self, $args);
+    $self->addHeader(OUTPUT => Upgrade       => 'env12:Upgrade');
+    $self->addHeader(OUTPUT => NotUnderstood => 'env12:NotUnderstood');
     $self;
-}
-
-sub _initWSDL11($)
-{   my ($class, $wsdl) = @_;
-
-    trace "initialize SOAP12 operations for WSDL11";
-
-    $wsdl->prefixes(soap12 => WSDL11SOAP12);
-    $wsdl->addKeyRewrite('PREFIXED(soap12)');
-
-    my $dir = dirname dirname __FILE__;
-    my @xsd = ( "$dir/SOAP12/xsd/2003-soap-rpc.xsd"
-              , "$dir/SOAP12/xsd/2003-soap-envelope.xsd"
-              , "$dir/SOAP12/xsd/2003-soap-encoding.xsd"
-              , "$dir/WSDL11/xsd/wsdl-soap12.xsd"
-              );
-    $wsdl->importDefinitions(\@xsd, element_form_default => 'qualified');
-
-    $wsdl->declare(READER =>
-      [ "soap12:address", "soap12:operation", "soap12:binding"
-      , "soap12:body",    "soap12:header",    "soap12:fault" ]);
 }
 
 sub _fromWSDL11(@)
@@ -108,12 +82,12 @@ sub _fromWSDL11(@)
       = @args{ qw/port_op bind_op wsdl/ };
 
     $args{schemas}   = $wsdl;
-    $args{endpoints} = $args{serv_port}{soap_address}{location};
+    $args{endpoints} = $args{serv_port}{soap12_address}{location};
 
-    my $sop = $b_op->{soap_operation}     || {};
-    $args{action}  ||= $sop->{soapAction} || '';
+    my $sop = $b_op->{soap12_operation}     || {};
+    $args{action}  ||= $sop->{soapAction};
 
-    my $sb = $args{binding}{soap_binding} || {};
+    my $sb = $args{binding}{soap12_binding} || {};
     $args{transport} = $sb->{transport}   || 'HTTP';
     $args{style}     = $sb->{style}       || 'document';
 
@@ -136,28 +110,29 @@ sub _msg_parts($$$$$)
     defined $port_op          # communication not in two directions
         or return ({}, {});
 
-    if(my $body = $bind_op->{soap_body})
+    if(my $body = $bind_op->{soap12_body})
     {   my $msgname   = $port_op->{message};
         my @parts     = $class->_select_parts($wsdl, $msgname, $body->{parts});
 
         my ($ns, $local) = unpack_type $msgname;
-        my $procedure;
-        if($style eq 'rpc')
-        {   exists $body->{namespace}
-                or error __x"rpc operation {name} requires namespace attribute"
-                     , name => $msgname;
-            my $ns = $body->{namespace};
-            $procedure = pack_type $ns, $opname;
-        }
-        else
-        {   $procedure = @parts==1 && $parts[0]{type} ? $msgname : $local; 
-        }
+        my $rpc_ns    = $body->{namespace};
+        $wsdl->addPrefixes(call => $rpc_ns)   # hopefully no-one uses "call"
+            if defined $rpc_ns && !$wsdl->prefixFor($rpc_ns);
+
+        my $procedure
+            = $style eq 'rpc' ? pack_type($rpc_ns, $opname)
+            : @parts==1 && $parts[0]{type} ? $msgname
+            : $local; 
 
         $parts{body}  = {procedure => $procedure, %$port_op, use => 'literal',
            %$body, parts => \@parts};
     }
+    elsif($port_op->{message})
+    {   # missing <soap:body use="literal"> in <wsdl:input> or :output
+        error __x"operation {opname} has a message in its portType but no encoding in the binding", opname => $opname;
+    }
 
-    my $bsh = $bind_op->{soap_header} || [];
+    my $bsh = $bind_op->{soap12_header} || [];
     foreach my $header (ref $bsh eq 'ARRAY' ? @$bsh : $bsh)
     {   my $msgname  = $header->{message};
         my @parts    = $class->_select_parts($wsdl, $msgname, $header->{part});
@@ -186,7 +161,7 @@ sub _select_parts($$$)
     @need or return @$parts;
 
     my @sel;
-    my %parts = map { ($_->{name} => $_) } @$parts;
+    my %parts = map +($_->{name} => $_), @$parts;
     foreach my $name (@need)
     {   my $part = $parts{$name}
             or error __x"message {msg} does not have a part named {part}"
@@ -204,9 +179,9 @@ sub _fault_parts($$$)
     my $port_faults  = $portop || [];
     my %faults;
 
-    my @sel;
-    foreach my $fault (map {$_->{soap_fault}} @$bind)
-    {   my $name  = $fault->{name};
+    foreach my $fault (@$bind)
+    {   $fault or next;
+        my $name  = $fault->{name};
 
         my $port  = first {$_->{name} eq $name} @$port_faults;
         defined $port
@@ -228,7 +203,7 @@ sub _fault_parts($$$)
           };
     }
 
-    {faults => \%faults };
+   +{ faults => \%faults };
 }
 
 #-------------------------------------------
@@ -245,12 +220,69 @@ sub clientClass { 'XML::Compile::SOAP12::Client' }
 
 #-------------------------------------------
 
+=section Modify
+
+Operations are often modified by SOAP extensions.
+See M<XML::Compile::SOAP::WSA>, for instance. Also demonstrated in
+the FAQ, M<XML::Compile::SOAP::FAQ>.
+
+=method addHeader ('INPUT'|'OUTPUT'|'FAULT'), LABEL, ELEMENT, OPTIONS
+Add a header definitions.  Many protocols on top of SOAP, like WSS, add
+headers to the operations which are not specified in the WSDL.
+
+When you add a header with same LABEL again, it will get silently
+ignored unless the ELEMENT type differs.  An ELEMENT is either a full
+type or a prefixed type.
+
+=option  mustUnderstand BOOLEAN
+=default mustUnderstand C<undef>
+Adds the mustUnderstand attribute.
+
+=option  destination ROLE
+=default destination C<undef>
+Adds the destination attribute,
+=cut
+
+sub addHeader($$$%)
+{   my ($self, $dir, $label, $el, %opts) = @_;
+    my $elem = $self->schemas->findName($el);
+    my $defs
+      = $dir eq 'INPUT'  ? 'input_def'
+      : $dir eq 'OUTPUT' ? 'output_def'
+      : $dir eq 'FAULT'  ? 'fault_def'
+      : panic "addHeader $dir";
+    my $headers = $self->{$defs}{header} ||= [];
+
+    if(my $already = first {$_->{part} eq $label} @$headers)
+    {   # the header is already defined, ignore second declaration
+        my $other_type = $already->{parts}[0]{element};
+        $other_type eq $elem
+            or error __x"header {label} already defined with type {type}"
+                 , label => $label, type => $other_type;
+        return $already;
+    }
+
+    my %part =
+      ( part  => $label, use => 'literal'
+      , parts => [
+         { name => $label, element => $elem
+         , mustUnderstand => $opts{mustUnderstand}
+         , destination    => $opts{destination}
+         } ]);
+
+    push @$headers, \%part;
+    \%part;
+}
+
+#-------------------------------------------
+
 =section Handlers
 
 =method compileHandler OPTIONS
 Prepare the routines which will decode the request and encode the answer,
 as will be run on the server. The M<XML::Compile::SOAP::Server> will
-connect these.
+connect these. All OPTIONS will get passed to
+M<XML::Compile::SOAP12::Server::compileHandler()>
 
 =requires callback CODE
 
@@ -265,26 +297,25 @@ sub compileHandler(@)
     my $soap = $soap12_server{$self->{schemas}}
       ||= XML::Compile::SOAP12::Server->new(schemas => $self->{schemas});
     my $style = $args{style} ||= $self->style;
-    my $kind  = $args{kind} ||= $self->kind;
 
     my @ro    = (%{$self->{input_def}},  %{$self->{fault_def}});
     my @so    = (%{$self->{output_def}}, %{$self->{fault_def}});
-    my $sel   = $args{selector}
-             || $soap->compileFilter(%{$self->{input_def}});
 
-    $soap->compileHandler
-      ( name      => $self->name
-      , kind      => $kind
-      , selector  => $sel
-      , encode    => $soap->_sender(@so, %args)
-      , decode    => $soap->_receiver(@ro, %args)
-      , callback  => $args{callback}
-      );
+    $args{encode}   ||= $soap->_sender(@so, %args);
+    $args{decode}   ||= $soap->_receiver(@ro, %args);
+    $args{selector} ||= $soap->compileFilter(%{$self->{input_def}});
+    $args{kind}     ||= $self->kind;
+    $args{name}       = $self->name;
+
+    $args{callback} = XML::Compile::SOAP::Extension
+      ->soap12HandlerWrapper($self, $args{callback}, \%args);
+
+    $soap->compileHandler(%args);
 }
 
 =method compileClient OPTIONS
 Returns one CODE reference which handles the processing for this
-operation.  Options C<transporter>, C<transport_hook>, and
+operation. Options C<transporter>, C<transport_hook>, and
 C<endpoint> are passed to M<compileTransporter()>.
 
 You pass that CODE reference an input message of the correct
@@ -293,9 +324,10 @@ will return then answer, or C<undef> in case of failure.  An 'one-way'
 operation with return C<undef> in case of failure, and a true value
 when successfull.
 
-Besides the OPTIONS listed, you can also specify anything which is
-accepted by M<XML::Compile::Schema::compile()>, like
-C<< sloppy_integers => 1 >> or hooks.
+You B<cannot> pass options for M<XML::Compile::Schema::compile()>, like
+C<<sloppy_integers => 0>>, hooks or typemaps this way. Provide these to
+the C<::WSDL> or other C<::Cache> object which defines the types, via
+C<new> option C<opts_rw> and friends.
 
 =cut
 
@@ -310,23 +342,28 @@ sub compileClient(@)
     my @so   = (%{$self->{input_def}},  %{$self->{fault_def}});
     my @ro   = (%{$self->{output_def}}, %{$self->{fault_def}});
 
-    $soap->compileClient
+    my $call = $soap->compileClient
       ( name         => $self->name
       , kind         => $kind
       , encode       => $soap->_sender(@so, %args)
       , decode       => $soap->_receiver(@ro, %args)
       , transport    => $self->compileTransporter(%args)
+      , async        => $args{async}
       );
+
+    XML::Compile::SOAP::Extension->soap12ClientWrapper($self, $call, \%args);
 }
 
-#-------------------
+#--------------------------
 
 =section Helpers
 
 =method explain WSDL, FORMAT, DIRECTION, OPTIONS
+[since 2.13]
+
 Dump an annotated structure showing how the operation works, helping
-developers to understand the schema. FORMAT is always C<PERL>: C<XML>
-is not yet supported.
+developers to understand the schema. FORMAT is C<PERL>.
+(C<XML> is not yet supported)
 
 The DIRECTION is C<INPUT>, it will return the message which the client
 sends to the server (input for the server). The C<OUTPUT> message is
@@ -343,14 +380,19 @@ M<XML::Compile::Schema::template()>, when C<recurse> is enabled.
 Append the templates of all the part structures.
 =cut
 
+my $sep = '#--------------------------------------------------------------';
+
 sub explain($$$@)
 {   my ($self, $schema, $format, $dir, %args) = @_;
 
     # $schema has to be passed as argument, because we do not want operation
     # objects to be glued to a schema object after compile time.
 
+    UNIVERSAL::isa($schema, 'XML::Compile::Schema')
+        or error __x"explain() requires first element to be a schema";
+
     $format eq 'PERL'
-       or error __x"only PERL template supported for the moment, not {got}"
+        or error __x"only PERL template supported for the moment, not {got}"
             , got => $format;
 
     my $style       = $self->style;
@@ -358,25 +400,56 @@ sub explain($$$@)
     my $skip_header = delete $args{skip_header} || 0;
     my $recurse     = delete $args{recurse}     || 0;
 
-    my $def = $dir eq 'INPUT' ? $self->{input_def} : $self->{output_def};
+    my $def    = $dir eq 'INPUT' ? $self->{input_def} : $self->{output_def};
+    my $faults = $self->{fault_def}{faults};
 
-    my (@struct, @attach);
+    my (@struct, @postproc, @attach);
     my @main = $recurse
        ? "# The details of the types and elements are attached below."
        : "# To explore the HASHes for each part, use recurse option.";
 
+  HEAD_PART:
+    foreach my $header (@{$def->{header} || []})
+    {   foreach my $part ( @{$header->{parts} || []} )
+        {   my $name = $part->{name};
+            my ($kind, $value) = $part->{type} ? (type => $part->{type})
+              : (element => $part->{element});
+    
+            my $type = $schema->prefixed($value) || $value;
+            push @main, ''
+              , "# Header part '$name' is $kind $type"
+              , ($kind eq 'type' && $recurse ? "# See fake element '$name'" : ())
+              , "my \$$name = {};";
+            push @struct, "    $name => \$$name,";
+    
+            $recurse or next HEAD_PART;
+    
+            my $elem = $value;
+            if($kind eq 'type')
+            {   # generate element with part name, because template requires elem
+                $schema->compileType(READER => $value, element => $name);
+                $elem = $name;
+            }
+    
+            push @attach, '', $sep, "\$$name ="
+              , $schema->template(PERL => $elem, skip_header => 1, %args), ';';
+        }
+    }
+
+  BODY_PART:
     foreach my $part ( @{$def->{body}{parts} || []} )
     {   my $name = $part->{name};
         my ($kind, $value) = $part->{type} ? (type => $part->{type})
           : (element => $part->{element});
 
+        my $type = $schema->prefixed($value) || $value;
         push @main, ''
-          , "# Part $kind $value"
+          , "# Body part '$name' is $kind $type"
           , ($kind eq 'type' && $recurse ? "# See fake element '$name'" : ())
           , "my \$$name = {};";
         push @struct, "    $name => \$$name,";
 
-        $recurse or next;
+        $recurse or next BODY_PART;
 
         my $elem = $value;
         if($kind eq 'type')
@@ -385,8 +458,49 @@ sub explain($$$@)
             $elem = $name;
         }
 
-        push @attach, ''
-          , $schema->template(PERL => $elem, skip_header => 1, %args);
+        push @attach, '', $sep, "\$$name ="
+          , $schema->template(PERL => $elem, skip_header => 1, %args), ';';
+    }
+
+    foreach my $fault (sort keys %$faults)
+    {   my $part = $faults->{$fault}{part};  # fault msgs have only one part
+        my ($kind, $value) = $part->{type} ? (type => $part->{type})
+          : (element => $part->{element});
+
+        my $type = $schema->prefixFor($value)
+          ? $schema->prefixed($value) : $value;
+
+        if($dir eq 'OUTPUT')
+        {   push @main, ''
+              , "# ... or fault $fault is $kind"
+              , "my \$$fault = {}; # $type"
+              , ($kind eq 'type' && $recurse ? "# See fake element '$fault'" : ())
+              , "my \$fault ="
+              , "  { code   => pack_type(\$myns, 'Open.NoSuchFile')"
+              , "  , reason => 'because I can'"
+              , "  , detail => \$$fault"
+              , '  };';
+            push @struct, "    $fault => \$fault,";
+        }
+        else
+        {   my $nice = $schema->prefixed($type) || $type;
+            push @postproc
+              , "    elsif(\$errname eq '$fault')"
+              , "    {   # \$details is a $nice"
+              , "    }";
+        }
+
+        $recurse or next;
+
+        my $elem = $value;
+        if($kind eq 'type')
+        {   # generate element with part name, because template requires elem
+            $schema->compileType(READER => $value, element => $fault);
+            $elem = $fault;
+        }
+
+        push @attach, '', $sep, "# FAULT", "\$$fault ="
+          , $schema->template(PERL => $elem, skip_header => 1, %args), ';';
     }
 
     if($dir eq 'INPUT')
@@ -396,7 +510,22 @@ sub explain($$$@)
          , 'my ($answer, $trace) = $call->(@params);', ''
          , '# @params will become %$data_in in the server handler.'
          , '# $answer is a HASH, an operation OUTPUT or Fault.'
-         , '# $trace is an XML::Compile::SOAP::Trace object.'
+         , '# $trace is an XML::Compile::SOAP::Trace object.';
+
+        unshift @postproc, ''
+          , '# You may get an error back from the server'
+          , 'if(my $f = $answer->{Fault})'
+          , '{   my $errname = $f->{_NAME};'
+          , '    my $error   = $answer->{$errname};'
+          , '    print "$error->{code}\n";', ''
+          , '    my $details = $error->{detail};'
+          , '    if(not $details)'
+          , '    {   # system error, no $details'
+          , '    }';
+    
+        push @postproc
+          , '    exit 1;'
+          , '}';
     }
     elsif($dir eq 'OUTPUT')
     {   s/^/   / for @main, @struct;
@@ -408,7 +537,7 @@ sub explain($$$@)
 
         push @main, ''
          , '   # This will end-up as $answer at client-side'
-         , "   return    # optional keyword"
+         , '   return    # optional keyword'
          , "   +{", @struct, "    };", "}";
     }
     else
@@ -417,9 +546,24 @@ sub explain($$$@)
     }
 
     my @header;
+    if(my $how = $def->{body})
+    {   my $use  = $how->{use} || 'literal';
+        push @header
+          , "# Operation $how->{procedure}"
+          , "#           $dir, $style $use";
+    }
+    else
+    {   push @header,
+          , "# Operation $opname has no $dir";
+    }
+
+    foreach my $fault (sort keys %$faults)
+    {   my $usage = $faults->{$fault};
+        push @header
+      , "#           FAULT $fault, $style $usage->{use}" # $style?
+    }
+
     push @header
-      , "# Operation $def->{body}{procedure}"
-      , "#           $dir $style $def->{body}{use}"
       , "# Produced  by ".__PACKAGE__." version $VERSION"
       , "#           on ".localtime()
       , "#"
@@ -438,11 +582,42 @@ sub explain($$$@)
     {   push @header
           , '# As part of the initiation phase of your server:'
           , 'my $daemon = XML::Compile::SOAP::HTTPDaemon->new;'
-          , '$deamon->operationsFromWSDL($wsdl,'
-          , "   callbacks => {$opname => \\&handle_$opname} );"
+          , '$deamon->operationsFromWSDL'
+          , '  ( $wsdl'
+          , '  , callbacks =>'
+          , "     { $opname => \\&handle_$opname}"
+          , '  );'
     }
 
-    join "\n", @header, @main, @attach, '';
+    join "\n", @header, @main, @postproc, @attach, '';
+}
+
+=method parsedWSDL
+[2.29] For some purposes, it is useful to get access to the parsed WSDL
+structure.
+
+B<Be aware> that the structure returned is consided "internal"
+and strongly influenced by behavior of M<XML::Compile>; backwards
+compatibility will not be maintained at all cost.
+
+You can use M<XML::Compile::Schema::template()> format C<TREE> to get
+more details about the element types mentioned in this structure.
+
+=example
+  use Data::Dumper;
+  $Data::Dumper::Indent    = 1;
+  $Data::Dumper::Quotekeys = 0;
+
+  print Dumper $op->parsedWSDL;
+=cut
+
+sub parsedWSDL()
+{   my $self = shift;
+      +{ input  => $self->{input_def}{body}
+       , output => $self->{output_def}{body}
+       , faults => $self->{fault_def}{faults}
+       , style  => $self->style
+       };
 }
 
 1;
