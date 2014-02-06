@@ -11,5 +11,4 @@ lib/XML/Compile/SOAP12/xsd/2003-soap-envelope.xsd
 lib/XML/Compile/SOAP12/xsd/2003-soap-rpc.xsd
 lib/XML/Compile/WSDL11/xsd/wsdl-soap12.xsd
 t/01use.t
-t/TestTools.pm
 xt/99pod.t

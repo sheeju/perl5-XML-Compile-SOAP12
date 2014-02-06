@@ -27,16 +27,16 @@ __PACKAGE__->register
   );
 
 =chapter NAME
-XML::Compile::SOAP12 - base class for SOAP1.2 implementation
+XML::Compile::SOAP12 - SOAP 1.2 protocol
 
 =chapter SYNOPSIS
-**WARNING** Implementation not finished: not usable!!
-I am looking for companies who will sponsor the two weeks of
-development time I need to complete this module.
+ # use either XML::Compile::SOAP12::Client or ::Server
+ # See XML::Compile::SOAP for global usage examples.
 
 =chapter DESCRIPTION
 This module handles the SOAP protocol version 1.2.
-See F<http://www.w3.org/TR/soap12/>).
+See F<http://www.w3.org/TR/soap12/>).  Development of this module was
+sponsored by "Momac", L<http://momac.net>.
 
 The client specifics are implemented in M<XML::Compile::SOAP12::Client>,
 and the server needs can be found in M<XML::Compile::SOAP12::Server>.
@@ -45,7 +45,7 @@ and the server needs can be found in M<XML::Compile::SOAP12::Server>.
 
 =section Constructors
 
-=method new OPTIONS
+=method new %options
 
 =option  header_fault <anything>
 =default header_fault error
@@ -124,7 +124,7 @@ sub sender($)
     $self->SUPER::sender($args);
 }
 
-=method compileMessage ('SENDER'|'RECEIVER'), OPTIONS
+=method compileMessage <'SENDER'|'RECEIVER'>, %options
 =cut
 
 sub compileMessage($$)
@@ -194,21 +194,17 @@ sub _sender(@)
           , headers => [keys %destination];
     }
 
-=pod
-
     # faults are always possible
     my @bparts  = @{$args{body}{parts} || []};
     my $w = $self->schemas->writer('env12:Fault'
-      , include_namespaces => sub {$_[0] ne SOAP11ENV && $_[2]}
+      , include_namespaces => sub {$_[0] ne SOAP12ENV && $_[2]}
       );
     push @bparts,
       { name    => 'Fault'
-      , element => pack_type(SOAP11ENV, 'Fault')
+      , element => pack_type(SOAP12ENV, 'Fault')
       , writer  => $w
       };
     local $args{body}{parts} = \@bparts;
-
-=cut
 
     $self->SUPER::_sender(%args);
 }
@@ -237,11 +233,11 @@ sub _writer_header($)
         {   $actor =~ s/\b(\S+)\b/$self->roleURI($1)/ge }
 
         my $envpref = $self->schemas->prefixFor(SOAP12ENV);
-        my $wcode = $understand || $actor
+        my $wcode   = $understand || $actor
          ? sub
            { my ($doc, $v) = @_;
              my $xml = $code->($doc, $v);
-             $xml->setAttribute("$envpref:mustUnderstand" => '1')
+             $xml->setAttribute("$envpref:mustUnderstand" => 'true')
                  if defined $understand;
              $xml->setAttribute("$envpref:actor" => $actor)
                  if $actor;
@@ -278,10 +274,10 @@ sub _writer_faults($)
         my $code = sub
           { my ($doc, $data)  = (shift, shift);
             my %copy = %$data;
-            $copy{faultactor} = $self->roleURI($copy{faultactor});
-            my $det = delete $copy{detail};
-            my @det = !defined $det ? () : ref $det eq 'ARRAY' ? @$det : $det;
-            $copy{detail}{$type} = [ map $details->($doc, $_), @det ];
+            $copy{Role} ||= $self->roleURI($copy{faultactor});
+            my $det  = delete $copy{Detail} || delete $copy{detail};
+            my @det  = !defined $det ? () : ref $det eq 'ARRAY' ? @$det : $det;
+            $copy{Detail}{$type} = [ map $details->($doc, $_), @det ];
             $wrfault->($doc, \%copy);
           };
 
@@ -392,8 +388,8 @@ sub replyMustUnderstandFault($)
 {   my ($self, $type) = @_;
 
    +{ Fault =>
-      { faultcode   => pack_type(SOAP12ENV, 'MustUnderstand')
-      , faultstring => "SOAP mustUnderstand $type"
+      { Code   => {Value => pack_type(SOAP12ENV, 'MustUnderstand') }
+      , Reason => {Text => {lang => 'en', _ => "SOAP mustUnderstand $type"}}
       }
     };
 }

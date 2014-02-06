@@ -4,6 +4,9 @@ use strict;
 package XML::Compile::SOAP12::Operation;
 use base 'XML::Compile::SOAP::Operation';
 
+### Much of the code below looks like a copy of ::SOAP11::Operation,
+### but be warned: there are subtile differences.
+
 use Log::Report 'xml-compile-soap', syntax => 'SHORT';
 use List::Util  'first';
 
@@ -30,14 +33,14 @@ XML::Compile::SOAP12::Operation - defines a SOAP12 interaction
  $op->explain($wsdl, PERL => 'INPUT', recurse => 1);
 
 =chapter DESCRIPTION
-Objects of this type define one possible SOAP12 interaction, either
-client side or server side.
+Objects of this type define one possible SOAP12 operation, used to
+construct (compile) client and server handlers.
 
 =chapter METHODS
 
 =section Constructors
 
-=c_method new OPTIONS
+=c_method new %options
 
 C<input_def>, C<output_def> and C<fault_def> are HASHes which contain
 the input and output message header, body and fault-header definitions
@@ -136,13 +139,7 @@ sub _msg_parts($$$$$)
     foreach my $header (ref $bsh eq 'ARRAY' ? @$bsh : $bsh)
     {   my $msgname  = $header->{message};
         my @parts    = $class->_select_parts($wsdl, $msgname, $header->{part});
-         push @{$parts{header}}, { %$header, parts => \@parts };
-
-        foreach my $fault ( @{$header->{headerfault} || []} )
-        {   $msgname = $fault->{message};
-            my @hf   = $class->_select_parts($wsdl, $msgname, $fault->{part});
-            push @{$parts{headerfault}}, { %$fault,  parts => \@hf };
-        }
+         push @{$parts{header}}, +{ %$header, parts => \@parts };
     }
     \%parts;
 }
@@ -214,6 +211,7 @@ sub _fault_parts($$$)
 =cut
 
 sub style()     {shift->{style}}
+
 sub version()   { 'SOAP12' }
 sub serverClass { 'XML::Compile::SOAP12::Server' }
 sub clientClass { 'XML::Compile::SOAP12::Client' }
@@ -226,12 +224,12 @@ Operations are often modified by SOAP extensions.
 See M<XML::Compile::SOAP::WSA>, for instance. Also demonstrated in
 the FAQ, M<XML::Compile::SOAP::FAQ>.
 
-=method addHeader ('INPUT'|'OUTPUT'|'FAULT'), LABEL, ELEMENT, OPTIONS
+=method addHeader <'INPUT'|'OUTPUT'|'FAULT'>, $label, $element, %options
 Add a header definitions.  Many protocols on top of SOAP, like WSS, add
 headers to the operations which are not specified in the WSDL.
 
-When you add a header with same LABEL again, it will get silently
-ignored unless the ELEMENT type differs.  An ELEMENT is either a full
+When you add a header with same $label again, it will get silently
+ignored unless the $element type differs.  An $element is either a full
 type or a prefixed type.
 
 =option  mustUnderstand BOOLEAN
@@ -240,7 +238,7 @@ Adds the mustUnderstand attribute.
 
 =option  destination ROLE
 =default destination C<undef>
-Adds the destination attribute,
+Adds the destination attribute to the header.
 =cut
 
 sub addHeader($$$%)
@@ -278,10 +276,10 @@ sub addHeader($$$%)
 
 =section Handlers
 
-=method compileHandler OPTIONS
+=method compileHandler %options
 Prepare the routines which will decode the request and encode the answer,
 as will be run on the server. The M<XML::Compile::SOAP::Server> will
-connect these. All OPTIONS will get passed to
+connect these. All %options will get passed to
 M<XML::Compile::SOAP12::Server::compileHandler()>
 
 =requires callback CODE
@@ -313,7 +311,7 @@ sub compileHandler(@)
     $soap->compileHandler(%args);
 }
 
-=method compileClient OPTIONS
+=method compileClient %options
 Returns one CODE reference which handles the processing for this
 operation. Options C<transporter>, C<transport_hook>, and
 C<endpoint> are passed to M<compileTransporter()>.
@@ -358,18 +356,17 @@ sub compileClient(@)
 
 =section Helpers
 
-=method explain WSDL, FORMAT, DIRECTION, OPTIONS
-[since 2.13]
+=method explain $wsdl, $format, $direction, %options
 
 Dump an annotated structure showing how the operation works, helping
-developers to understand the schema. FORMAT is C<PERL>.
-(C<XML> is not yet supported)
+developers to understand the schema. The $format must be string "PERL".
+("XML" format output is not yet supported)
 
-The DIRECTION is C<INPUT>, it will return the message which the client
-sends to the server (input for the server). The C<OUTPUT> message is
-sent as response by the server.
+When the $direction is string "INPUT", it will return the message which
+the client sends to the server (input for the server). The "OUTPUT"
+message is sent as response by the server.
 
-All OPTIONS besides those described here are passed to
+All %options besides those described here are passed to
 M<XML::Compile::Schema::template()>, when C<recurse> is enabled.
 
 =option  skip_header BOOLEAN
@@ -409,7 +406,7 @@ sub explain($$$@)
        : "# To explore the HASHes for each part, use recurse option.";
 
   HEAD_PART:
-    foreach my $header (@{$def->{header} || []})
+    foreach my $header ( @{$def->{header} || []} )
     {   foreach my $part ( @{$header->{parts} || []} )
         {   my $name = $part->{name};
             my ($kind, $value) = $part->{type} ? (type => $part->{type})
@@ -591,25 +588,6 @@ sub explain($$$@)
 
     join "\n", @header, @main, @postproc, @attach, '';
 }
-
-=method parsedWSDL
-[2.29] For some purposes, it is useful to get access to the parsed WSDL
-structure.
-
-B<Be aware> that the structure returned is consided "internal"
-and strongly influenced by behavior of M<XML::Compile>; backwards
-compatibility will not be maintained at all cost.
-
-You can use M<XML::Compile::Schema::template()> format C<TREE> to get
-more details about the element types mentioned in this structure.
-
-=example
-  use Data::Dumper;
-  $Data::Dumper::Indent    = 1;
-  $Data::Dumper::Quotekeys = 0;
-
-  print Dumper $op->parsedWSDL;
-=cut
 
 sub parsedWSDL()
 {   my $self = shift;

@@ -17,7 +17,7 @@ XML::Compile::SOAP12::Client - SOAP1.2 client needs
 
 =section Constructors
 
-=method new OPTIONS
+=method new %options
 =cut
 
 # much work to do ;-)
