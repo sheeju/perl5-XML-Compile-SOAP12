@@ -16,7 +16,7 @@ use XML::Compile::SOAP12::Client;
 use XML::Compile::SOAP12::Server;
 use XML::Compile::SOAP::Extension;
 
-our $VERSION;         # OODoc adds $VERSION to the script
+use vars '$VERSION';         # OODoc adds $VERSION to the script
 $VERSION ||= '(devel)';
 
 # client/server object per schema class, because initiation options
