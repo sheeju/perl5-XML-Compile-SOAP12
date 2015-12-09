@@ -345,7 +345,7 @@ sub compileClient(@)
       , kind         => $kind
       , encode       => $client->_sender(@so, %args)
       , decode       => $client->_receiver(@ro, %args)
-      , transport    => $self->compileTransporter(%args)
+      , transport    => $self->compileTransporter(%args, soap => 'SOAP12')
       , async        => $args{async}
       , soap         => $args{soap}
       );
