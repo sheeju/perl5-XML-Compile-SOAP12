@@ -45,7 +45,7 @@ sub makeError(@)
        || { Text    => [ { lang => 'en', _ => $args{faultstring} } ] };
 
     info "Fault: $error{Reason}{Text}[0]{_}";
-    $self->faultWriter->(Fault => \%args);
+    $self->faultWriter->(Fault => \%error);
 }
 
 sub faultValidationFailed($$)

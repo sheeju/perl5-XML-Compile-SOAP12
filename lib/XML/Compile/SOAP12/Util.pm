@@ -31,7 +31,7 @@ our %EXPORT_TAGS =
 =chapter NAME
 XML::Compile::SOAP12::Util - general purpose routines for XML::Compile::SOAP12
 
-=chapter SYNOPSYS
+=chapter SYNOPSIS
  use XML::Compile::SOAP12::Util;
 
 =chapter DESCRIPTION
