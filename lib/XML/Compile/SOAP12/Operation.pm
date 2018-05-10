@@ -1,13 +1,18 @@
-use warnings;
-use strict;
-
-package XML::Compile::SOAP12::Operation;
-use base 'XML::Compile::SOAP::Operation';
+# This code is part of distribution XML-Compile-SOAP12.  Meta-POD processed
+# with OODoc into POD and HTML manual-pages.  See README.md
+# Copyright Mark Overmeer.  Licensed under the same terms as Perl itself.
 
 ### Much of the code below looks like a copy of ::SOAP11::Operation,
 ### but be warned: there are subtile differences.
 
-use Log::Report 'xml-compile-soap', syntax => 'SHORT';
+package XML::Compile::SOAP12::Operation;
+use base 'XML::Compile::SOAP::Operation';
+
+use warnings;
+use strict;
+
+use Log::Report 'xml-compile-soap';
+
 use List::Util  'first';
 
 use XML::Compile::Util         qw/pack_type unpack_type/;
