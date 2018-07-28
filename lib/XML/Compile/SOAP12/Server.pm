@@ -25,6 +25,7 @@ needs to create the server side.  The server daemon is implemented
 by M<XML::Compile::SOAP::Daemon>
 
 =chapter METHODS
+
 =cut
 
 sub init($)
@@ -66,7 +67,7 @@ sub faultValidationFailed($$)
     $detail->addChild($errors);
 
     $self->makeError
-      ( faultcode   => pack_type(XC_DAEMON_NS, 'validationFailed')
+      ( faultcode   => pack_type(SOAP12ENV, 'validationFailed')
       , faultstring => $message
       , faultactor  => $self->role
       , detail      => $detail
@@ -87,7 +88,7 @@ sub faultResponseInvalid($$)
     $detail->addChild($errors);
 
     $self->makeError
-      ( faultcode   => pack_type(XC_DAEMON_NS, 'invalidResponse')
+      ( faultcode   => pack_type(SOAP12ENV, 'invalidResponse')
       , faultstring => $message
       , faultactor  => $self->role
       , detail      => $detail
@@ -101,7 +102,7 @@ sub faultNotImplemented($)
       , name => $name, version => 'SOAP12';
 
     $self->makeError
-      ( faultcode   => pack_type(XC_DAEMON_NS, 'notImplemented')
+      ( faultcode   => pack_type(SOAP12ENV, 'notImplemented')
       , faultstring => $message
       , faultactor  => SOAP12NEXT
       );
@@ -112,7 +113,7 @@ sub faultNoAnswerProduced($)
  
     my $message = __x"callback {name} did not return an answer", name => $name;
     $self->makeError
-      ( faultcode   => pack_type(XC_DAEMON_NS, 'noAnswerProduced')
+      ( faultcode   => pack_type(SOAP12ENV, 'noAnswerProduced')
       , faultstring => $message
       , faultactor  => $self->role
       );
@@ -134,7 +135,7 @@ sub faultMessageNotRecognized($$$)
     }
 
     $self->makeError
-      ( faultcode   => pack_type(XC_DAEMON_NS, 'notRecognized')
+      ( faultcode   => pack_type(SOAP12ENV, 'notRecognized')
       , faultstring => $message
       , faultactor  => SOAP12NEXT
       );
@@ -148,7 +149,7 @@ sub faultTryOtherProtocol($$)
           , name => $name, version => 'SOAP12', other => $other;
 
     $self->makeError
-      ( faultcode   => pack_type(XC_DAEMON_NS, 'tryUpgrade')
+      ( faultcode   => pack_type(SOAP12ENV, 'tryUpgrade')
       , faultstring => $message
       , faultactor  => SOAP12NEXT
       );
